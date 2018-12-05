@@ -1,0 +1,17 @@
+.DS_STORE
+
+data
+models/*.h5
+raw/*
+
+parse
+
+!.gitkeep
+*.pyc
+__pycache__
+.python-version
+
+venv
+.idea
+
+logs
