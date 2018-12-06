@@ -1,18 +1,18 @@
 # coding: utf-8
 
-import tensorflow as tf
-from tensorflow.python.keras.models import Sequential, Model
-from tensorflow.python.keras.layers import Input, Reshape, Dense, Dropout, MaxPooling2D, Conv2D, Flatten
+import math
+
+from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.layers import Input, Reshape, Dense, MaxPooling2D, Conv2D, Flatten
 from tensorflow.python.keras.layers import Conv2DTranspose, LeakyReLU
 from tensorflow.python.keras.layers.core import Activation
 from tensorflow.python.keras.layers.normalization import BatchNormalization
-from tensorflow.python.keras.optimizers import Adam, RMSprop
+from tensorflow.python.keras.optimizers import RMSprop
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras import initializers
 from tensorflow.python.keras.utils.generic_utils import Progbar
+from tensorflow.python.keras.utils import plot_model
 import numpy as np
 import cv2
-import math
 
 
 def combine_images(generated_images):
@@ -25,7 +25,7 @@ def combine_images(generated_images):
     image = np.zeros((height * shape[0], width * shape[1], shape[2]),
                      dtype=generated_images.dtype)
     for index, img in enumerate(generated_images):
-        i = int(index / width)
+        i = index // width
         j = index % width
         image[i * shape[0]:(i + 1) * shape[0], j * shape[1]:(j + 1) * shape[1], :] = img[:, :, :]
     return image
@@ -72,10 +72,13 @@ def discriminator_model():
 def generator_containing_discriminator(g, d):
     """d_on_g model for training generator"""
     d.trainable = False
-    ganInput = Input(shape=(10,))
-    x = g(ganInput)
-    ganOutput = d(x)
-    gan = Model(inputs=ganInput, outputs=ganOutput)
+    gan_input = Input(shape=(10,))
+    x = g(gan_input)
+    gan_output = d(x)
+    gan = Model(inputs=gan_input, outputs=gan_output)
+    # plot_model(g, to_file='generator.png', show_shapes=True)
+    # plot_model(d, to_file='discriminator.png', show_shapes=True)
+    # plot_model(gan, to_file='model.png', show_shapes=True)
     # gan.compile(loss='binary_crossentropy', optimizer='adam')
     return gan
 
@@ -83,39 +86,37 @@ def generator_containing_discriminator(g, d):
 def load_model():
     d = discriminator_model()
     g = generator_model()
-    d_optim = RMSprop()
-    g_optim = RMSprop(lr=0.0002)
-    g.compile(loss='binary_crossentropy', optimizer=g_optim)
-    d.compile(loss='binary_crossentropy', optimizer=d_optim)
+    g.compile(loss='binary_crossentropy', optimizer=RMSprop(lr=0.0002))
+    d.compile(loss='binary_crossentropy', optimizer='rmsprop')
     d.load_weights('./weights/discriminator.h5')
     g.load_weights('./weights/generator.h5')
     return g, d
 
 
-def train(BATCH_SIZE, X_train):
+def train(batch_size, X_train):
     """train generator and discriminator
     """
     d = discriminator_model()
     g = generator_model()
     d_on_g = generator_containing_discriminator(g, d)
-    d_optim = RMSprop(lr=0.0004)
-    g_optim = RMSprop(lr=0.0002)
-    g.compile(loss='mse', optimizer=g_optim)
-    d_on_g.compile(loss='mse', optimizer=g_optim)
+    g_optimizer = RMSprop(lr=0.0002)
+    g.compile(loss='mse', optimizer=g_optimizer)
+    d_on_g.compile(loss='mse', optimizer=g_optimizer)
     d.trainable = True
-    d.compile(loss='mse', optimizer=d_optim)
+    d.compile(loss='mse', optimizer=RMSprop(lr=0.0004))
 
-    for epoch in range(10):
-        print("Epoch is", epoch)
-        n_iter = int(X_train.shape[0] / BATCH_SIZE)
+    num_epochs = 10
+    for epoch in range(num_epochs):
+        print("Epoch", str(epoch) + "/" + str(num_epochs))
+        n_iter = X_train.shape[0] // batch_size
         progress_bar = Progbar(target=n_iter)
 
         for index in range(n_iter):
             # create random noise -> U(0,1) 10 latent vectors
-            noise = np.random.uniform(0, 1, size=(BATCH_SIZE, 10))
+            noise = np.random.uniform(0, 1, size=(batch_size, 10))
 
             # load real data & generate fake data
-            image_batch = X_train[index * BATCH_SIZE:(index + 1) * BATCH_SIZE]
+            image_batch = X_train[index * batch_size:(index + 1) * batch_size]
             generated_images = g.predict(noise, verbose=0)
 
             # visualize training results
@@ -126,14 +127,14 @@ def train(BATCH_SIZE, X_train):
 
             # attach label for training discriminator
             X = np.concatenate((image_batch, generated_images))
-            y = np.array([1] * BATCH_SIZE + [0] * BATCH_SIZE)
+            y = np.array([1] * batch_size + [0] * batch_size)
 
             # training discriminator
             d_loss = d.train_on_batch(X, y)
 
             # training generator
             d.trainable = False
-            g_loss = d_on_g.train_on_batch(noise, np.array([1] * BATCH_SIZE))
+            g_loss = d_on_g.train_on_batch(noise, np.array([1] * batch_size))
             d.trainable = True
 
             progress_bar.update(index, values=[('g', g_loss), ('d', d_loss)])
@@ -145,11 +146,11 @@ def train(BATCH_SIZE, X_train):
     return d, g
 
 
-def generate(BATCH_SIZE):
+def generate(batch_size):
     """generate images"""
     g = generator_model()
     g.load_weights('weights/generator.h5')
-    noise = np.random.uniform(0, 1, (BATCH_SIZE, 10))
+    noise = np.random.uniform(0, 1, (batch_size, 10))
     generated_images = g.predict(noise)
     return generated_images
 
@@ -166,9 +167,9 @@ def feature_extractor(d=None):
     if d is None:
         d = discriminator_model()
         d.load_weights('weights/discriminator.h5')
-    intermidiate_model = Model(inputs=d.layers[0].input, outputs=d.layers[-7].output)
-    intermidiate_model.compile(loss='binary_crossentropy', optimizer='rmsprop')
-    return intermidiate_model
+    intermediate_model = Model(inputs=d.layers[0].input, outputs=d.layers[-7].output)
+    intermediate_model.compile(loss='binary_crossentropy', optimizer='rmsprop')
+    return intermediate_model
 
 
 def anomaly_detector(g=None, d=None):
@@ -177,8 +178,8 @@ def anomaly_detector(g=None, d=None):
     if g is None:
         g = generator_model()
         g.load_weights('weights/generator.h5')
-    intermidiate_model = feature_extractor(d)
-    intermidiate_model.trainable = False
+    intermediate_model = feature_extractor(d)
+    intermediate_model.trainable = False
     g = Model(inputs=g.layers[1].input, outputs=g.layers[-1].output)
     g.trainable = False
     # Input layer cann't be trained. Add new layer as same size & same distribution
@@ -188,7 +189,7 @@ def anomaly_detector(g=None, d=None):
 
     # G & D feature
     G_out = g(gInput)
-    D_out = intermidiate_model(G_out)
+    D_out = intermediate_model(G_out)
     model = Model(inputs=aInput, outputs=[G_out, D_out])
     model.compile(loss=sum_of_residual, loss_weights=[0.90, 0.10], optimizer='rmsprop')
 
@@ -203,8 +204,8 @@ def compute_anomaly_score(model, x, iterations=500, d=None):
     """
     z = np.random.uniform(0, 1, size=(1, 10))
 
-    intermidiate_model = feature_extractor(d)
-    d_x = intermidiate_model.predict(x)
+    intermediate_model = feature_extractor(d)
+    d_x = intermediate_model.predict(x)
 
     # learning for changing latent
     loss = model.fit(z, [x, d_x], batch_size=1, epochs=iterations, verbose=0)

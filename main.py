@@ -5,9 +5,9 @@ import os
 import tensorflow as tf
 from tensorflow.python.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.python.keras.callbacks import ReduceLROnPlateau, EarlyStopping, TensorBoard
-from tensorflow.python.keras.applications.densenet import DenseNet121
-from tensorflow.python.keras.utils import plot_model
 import numpy as np
+
+import anogan
 
 
 flags = tf.flags
@@ -21,15 +21,13 @@ FLAGS = flags.FLAGS
 
 def main(_):
     # input image dimensions
-    img_rows, img_cols = 400, 400
+    img_rows, img_cols = 500, 500
     # Images are RGB.
     img_channels = 3
 
     # channel last -> (~/.keras/keras.json)
-    # TODO: DenseNet.LastDense.activation = sigmoid
-    model = DenseNet121(input_shape=(img_rows, img_cols, img_channels),
-                        weights=None, classes=1)  # Binary classification
-    plot_model(model, to_file='model.png', show_shapes=True)
+    # (img_rows, img_cols, img_channels), 1
+    model = anogan.train(FLAGS.batch_size, )  # Binary classification
     model.compile(loss='binary_crossentropy',  # when multiclass classification, loss is categorical_crossentropy
                   optimizer='adam',
                   metrics=['accuracy'])
