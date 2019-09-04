@@ -70,7 +70,8 @@ def discriminator_model():
 
 
 def generator_containing_discriminator(g, d):
-    """d_on_g model for training generator"""
+    """d_on_g model for training generator
+    """
     d.trainable = False
     gan_input = Input(shape=(10,))
     x = g(gan_input)
